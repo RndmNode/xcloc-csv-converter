@@ -11,14 +11,24 @@ Small CLI tool to convert **Xcode localization exchange packages** (`.xcloc`) to
 |--------|-------------|
 | **Key** | Base string key from the XLIFF `trans-unit` `id` (variant suffix stripped). |
 | **Variant** | Suffix after `\|==\|` when present (e.g. `plural.one`, `device.other`). Empty for normal strings. |
-| **Default (&lt;region&gt;)** | Source language text (from `contents.json` `developmentRegion`). |
-| **&lt;Language&gt; (&lt;locale&gt;)** | Target translation for that locale. |
+| **Default (<region>)** | Source language text (from `contents.json` `developmentRegion`). |
+| **<Language> (<locale>)** | Target translation for that locale. |
 | **Comment** | Notes for translators (from XLIFF `<note>`). |
 | **Source File** | Which catalog file the unit came from (e.g. `zndo/Localizable.xcstrings`). Required because the same key can appear in multiple files. |
 
 Plural and device variants from the String Catalog appear as separate rows; the full XLIFF id is `Key|==|Variant`.
 
-## Usage (run from this folder)
+## Usage (round trip)
+
+This is the typical workflow if you want to go from a `.xcloc` bundle → CSV → edited translations → new `.xcloc` bundle:
+
+- Export or obtain a `.xcloc` bundle (a directory, usually named `Something.xcloc`).
+- Run `to-csv` to generate a CSV translators can edit.
+- Translate by filling in the **target-language column** (for example `Chinese, Simplified (zh-Hans)`).
+- Run `to-xcloc` to create a **new** `.xcloc` bundle that contains those translations.
+- Import the new bundle in Xcode: **Product → Import Localizations…**
+
+## Usage (commands)
 
 ```bash
 # Export an .xcloc (from Xcode: Product → Export Localizations) to CSV
@@ -27,11 +37,18 @@ python3 xcloc_converter.py to-csv path/to/zh-Hans.xcloc -o zh-Hans.csv
 # Default output: <targetLocale>.csv in the current working directory if -o is omitted
 python3 xcloc_converter.py to-csv path/to/zh-Hans.xcloc
 
-# After translators fill the target column, produce a new .xcloc for import
+# After translators fill the target column, produce a NEW .xcloc for import.
+# The output path must not exist (the tool refuses to overwrite).
 python3 xcloc_converter.py to-xcloc zh-Hans.csv path/to/zh-Hans.xcloc -o path/to/zh-Hans-import.xcloc
 ```
 
 Then in Xcode: **Product → Import Localizations…** and choose the generated `.xcloc`.
+
+### CSV → `.xcloc` expectations (important)
+
+- The CSV should come from `to-csv` (or at least keep compatible headers). The tool resolves columns based on headers like `Key`, `Variant`, `Comment`, `Source File`, plus `Default (<developmentRegion>)` and `<Language> (<targetLocale>)`.
+- Rows are matched by **Source File + Key/Variant** (so keep the `Source File` column intact).
+- Only **non-empty** cells in the target-language column are applied; empty target cells are skipped.
 
 ### Install as a command (optional)
 

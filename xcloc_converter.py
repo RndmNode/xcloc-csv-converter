@@ -441,31 +441,93 @@ def cmd_to_xcloc(args: argparse.Namespace) -> None:
 
 
 def main() -> None:
+    fmt = argparse.RawDescriptionHelpFormatter
     parser = argparse.ArgumentParser(
-        description="Convert .xcloc bundles to/from CSV for localization workflows."
+        description=(
+            "Convert Xcode .xcloc localization bundles to CSV and back.\n\n"
+            "  to-csv    — Export strings from a bundle into a spreadsheet-friendly CSV.\n"
+            "  to-xcloc  — Apply edited CSV translations into a new copy of the bundle.\n\n"
+            "The bundle is a directory (often named Something.xcloc). Translatable text lives in "
+            "Localized Contents/<locale>.xliff; this tool reads and writes that file when merging CSV."
+        ),
+        formatter_class=fmt,
+        epilog=(
+            "Typical round trip\n"
+            "  1. Obtain a .xcloc from Xcode (File → Export / Project localization) or use your repo copy.\n"
+            "  2. Run to-csv to produce a CSV; send it to translators or edit it locally.\n"
+            "  3. Run to-xcloc with the CSV, the same (or equivalent) template bundle, and a new output path.\n"
+            "  4. Import the new bundle in Xcode or replace files as your workflow requires.\n\n"
+            "Import only updates <target> text in the target locale XLIFF; Source Contents and "
+            "contents.json are copied unchanged from the template."
+        ),
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
-    p_csv = sub.add_parser("to-csv", help="Export .xcloc to CSV")
-    p_csv.add_argument("xcloc", help="Path to .xcloc bundle")
+    p_csv = sub.add_parser(
+        "to-csv",
+        help="Export strings from a .xcloc bundle to a UTF-8 CSV.",
+        description=(
+            "Reads Localized Contents/<targetLocale>.xliff and writes a CSV with one row per string.\n"
+            "Columns: Key, Variant, Default (<developmentRegion>), "
+            "<English name> (<targetLocale>), Comment, Source File.\n"
+            "Use this file as the template for to-xcloc so column headers stay aligned with the bundle."
+        ),
+        formatter_class=fmt,
+        epilog=(
+            "Examples\n"
+            "  %(prog)s path/to/MyApp.xcloc\n"
+            "  %(prog)s path/to/MyApp.xcloc -o MyApp_strings.csv\n\n"
+            "If you omit -o/--output, the CSV is written as <targetLocale>.csv in the current "
+            "working directory (locale comes from contents.json inside the bundle)."
+        ),
+    )
+    p_csv.add_argument(
+        "xcloc",
+        help="Path to the .xcloc bundle directory (the folder Xcode exports).",
+    )
     p_csv.add_argument(
         "-o",
         "--output",
-        help="Output CSV path (default: <targetLocale>.csv in cwd)",
+        metavar="PATH",
+        help="CSV file to create (default: <targetLocale>.csv in the current directory).",
     )
     p_csv.set_defaults(func=cmd_to_csv)
 
-    p_xcloc = sub.add_parser("to-xcloc", help="Apply CSV translations to a copy of .xcloc")
-    p_xcloc.add_argument("csv", help="Input CSV path")
+    p_xcloc = sub.add_parser(
+        "to-xcloc",
+        help="Build a new .xcloc bundle by merging a CSV into a copy of a template bundle.",
+        description=(
+            "Converts CSV → .xcloc: copies the entire template bundle to a new directory, then "
+            "writes translation cells from the CSV into the target locale XLIFF (<target> elements).\n\n"
+            "The CSV must include the same column layout as to-csv output (Key, Variant, default and "
+            "target columns matching contents.json, etc.). Only non-empty cells in the target-language "
+            "column update the XLIFF; rows are matched by Source File + Key/Variant."
+        ),
+        formatter_class=fmt,
+        epilog=(
+            "What you need\n"
+            "  • A CSV from to-csv (or compatible headers).\n"
+            "  • The same .xcloc you exported from (or an equivalent template with matching keys).\n"
+            "  • A new output path: the tool refuses to overwrite; remove the folder or pick another name.\n\n"
+            "Example\n"
+            "  %(prog)s translations.csv path/to/MyApp.xcloc -o path/to/MyApp_translated.xcloc\n\n"
+            "After this, open or import MyApp_translated.xcloc in Xcode like any other localization bundle."
+        ),
+    )
+    p_xcloc.add_argument(
+        "csv",
+        help="Input CSV path (usually produced by the to-csv command).",
+    )
     p_xcloc.add_argument(
         "xcloc",
-        help="Path to source .xcloc bundle (template; copied entirely)",
+        help="Template .xcloc bundle directory; the whole tree is copied, then XLIFF is updated.",
     )
     p_xcloc.add_argument(
         "-o",
         "--output",
+        metavar="PATH",
         required=True,
-        help="Output .xcloc bundle path (must not exist)",
+        help="New .xcloc directory to create (must not already exist).",
     )
     p_xcloc.set_defaults(func=cmd_to_xcloc)
 

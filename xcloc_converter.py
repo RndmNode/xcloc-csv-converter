@@ -10,8 +10,10 @@ from __future__ import annotations
 
 import argparse
 import csv
+import io
 import json
 import os
+import re
 import shutil
 import sys
 import xml.etree.ElementTree as ET
@@ -134,6 +136,41 @@ def get_note_text(trans_unit: ET.Element) -> str:
     if not notes:
         return ""
     return "\n".join(element_text(n) for n in notes if element_text(n))
+
+
+def _normalize_xliff_xml_for_xcode(xml_text: str) -> str:
+    """
+    ElementTree serializes XLIFF 1.2 with a prefixed namespace (e.g. ns0:). Xcode's
+    importer expects the same default-namespace form as its exports: <xliff xmlns="...">.
+    """
+    m = re.search(
+        r"<(\w+):xliff\s+xmlns:\1=\"" + re.escape(XLIFF_NS) + r"\"",
+        xml_text,
+    )
+    if m:
+        prefix = m.group(1)
+        xml_text = xml_text.replace(
+            f'<{prefix}:xliff xmlns:{prefix}="{XLIFF_NS}"',
+            f'<xliff xmlns="{XLIFF_NS}"',
+            1,
+        )
+        xml_text = xml_text.replace(f"<{prefix}:", "<")
+        xml_text = xml_text.replace(f"</{prefix}:", "</")
+    xml_text = xml_text.replace(
+        "<?xml version='1.0' encoding='UTF-8'?>",
+        '<?xml version="1.0" encoding="UTF-8"?>',
+    )
+    return xml_text
+
+
+def _write_xliff_for_xcode(tree: ET.ElementTree, xliff_path: str) -> None:
+    ET.register_namespace("xsi", XSI_NS)
+    buf = io.BytesIO()
+    tree.write(buf, encoding="UTF-8", xml_declaration=True)
+    text = buf.getvalue().decode("utf-8")
+    text = _normalize_xliff_xml_for_xcode(text)
+    with open(xliff_path, "w", encoding="utf-8") as f:
+        f.write(text)
 
 
 def validate_xliff_root(root: ET.Element) -> None:
@@ -398,11 +435,8 @@ def apply_translations_to_xliff(
                 target_el.text = text
             updated += 1
 
-    # ElementTree cannot use default_namespace=XLIFF_NS on these files (conflicts with xml:space,
-    # xsi:, etc.), so output uses an arbitrary prefix (often ns0:). This is valid XML and Xcode
-    # accepts it for import.
-    ET.register_namespace("xsi", XSI_NS)
-    tree.write(xliff_path, encoding="UTF-8", xml_declaration=True)
+    # ElementTree emits ns0:-prefixed tags; normalize to default-namespace XLIFF for Xcode import.
+    _write_xliff_for_xcode(tree, xliff_path)
     return updated
 
 
@@ -508,7 +542,8 @@ def main() -> None:
             "What you need\n"
             "  • A CSV from to-csv (or compatible headers).\n"
             "  • The same .xcloc you exported from (or an equivalent template with matching keys).\n"
-            "  • A new output path: the tool refuses to overwrite; remove the folder or pick another name.\n\n"
+            "  • A new output path: the tool refuses to overwrite; remove the folder or pick another name.\n"
+            "  Source Contents (e.g. .xcstrings) is copied unchanged; only Localized Contents XLIFF is edited.\n\n"
             "Example\n"
             "  %(prog)s translations.csv path/to/MyApp.xcloc -o path/to/MyApp_translated.xcloc\n\n"
             "After this, open or import MyApp_translated.xcloc in Xcode like any other localization bundle."

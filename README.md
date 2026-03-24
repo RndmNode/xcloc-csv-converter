@@ -49,6 +49,12 @@ Then in Xcode: **Product → Import Localizations…** and choose the generated 
 - The CSV should come from `to-csv` (or at least keep compatible headers). The tool resolves columns based on headers like `Key`, `Variant`, `Comment`, `Source File`, plus `Default (<developmentRegion>)` and `<Language> (<targetLocale>)`.
 - Rows are matched by **Source File + Key/Variant** (so keep the `Source File` column intact).
 - Only **non-empty** cells in the target-language column are applied; empty target cells are skipped.
+- Use the **same** `.xcloc` you exported to CSV (or an equivalent export from the same project revision) as the template for `to-xcloc`. A CSV from a different export can break column paths or keys even though `Source Contents/**/*.xcstrings` is still copied unchanged.
+
+### Troubleshooting Xcode import
+
+- **`Source Contents`**: `to-xcloc` copies the entire template bundle; string catalogs under `Source Contents/` are not modified. If Xcode complains about catalogs, check that you are importing into the project named in `contents.json` and that your CSV was produced from a matching bundle.
+- **XLIFF**: The tool writes `Localized Contents/<locale>.xliff` in the same default-namespace style as Xcode exports (not ElementTree’s `ns0:` prefix), so the importer can read the file reliably.
 
 ### Install as a command (optional)
 
@@ -64,7 +70,7 @@ This installs the `xcloc-csv` entry point (same CLI as `python3 xcloc_converter.
 
 - **Empty target cells** in the CSV are skipped; existing `<target>` entries in the template XLIFF are left as-is.
 - **Non-empty targets** set or add `<target state="translated">…</target>`.
-- Rewritten XLIFF may use an XML namespace prefix such as `ns0:` on elements; this is valid XML and is accepted by Xcode on import.
+- **XLIFF on disk** is normalized after editing so it matches Xcode’s default-namespace XLIFF (not a prefixed `ns0:` rewrite), which avoids import issues with Xcode’s localization importer.
 
 ## License
 
